@@ -3,13 +3,13 @@ import google.generativeai as genai
 import json
 import random
 import time
-import re
 
-# --- SAYFA AYARLARI ---
+# --- 1. SAYFA AYARLARI (EN BAŞTA OLMALI) ---
 st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="centered")
 
-# --- YARDIMCI: İSTATİSTİK KORUYUCU ---
+# --- 2. YARDIMCI FONKSİYONLAR ---
 def safe_progress(value):
+    """İlerleme çubuğunun 100'den büyük sayılarda çökmesini engeller."""
     try:
         val = float(value)
         if val > 100: return 1.0
@@ -18,36 +18,55 @@ def safe_progress(value):
     except:
         return 0.5
 
-# --- YARDIMCI: JSON TEMİZLEYİCİ (GÜÇLENDİRİLDİ) ---
 def clean_json(text):
-    # JSON Modu açık olsa bile bazen markdown formatı gelebilir
+    """JSON temizliği yapar."""
     text = text.replace("```json", "").replace("```", "").strip()
+    # Bazen model çift parantez yollar, en dıştakini bulalım
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start != -1 and end != 0:
+        return text[start:end]
     return text
 
-# --- AKILLI MODEL SEÇİCİ ---
+# --- 3. AKILLI MODEL SEÇİCİ (KEY TESTER MANTIĞI) ---
 def get_best_model(api_key):
     genai.configure(api_key=api_key)
-    # Öncelik sırası: JSON Modunu destekleyen Flash modelleri
-    priority_list = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    
+    # LİSTE GÜNCELLENDİ: Key Tester'da çalışan modelleri önceliklendirdik
+    # 1.5-flash sorunlu olduğu için onu sona attık veya çıkardık.
+    priority_list = [
+        'gemini-2.0-flash',      # En Hızlısı
+        'gemini-1.5-pro',        # En Akıllısı
+        'gemini-pro'             # En Eskisi (Garanti Çalışır)
+    ]
     
     try:
+        # 1. Hızlı Liste Kontrolü
         for model_name in priority_list:
             try:
                 model = genai.GenerativeModel(model_name)
-                model.generate_content("T", request_options={"timeout": 5})
+                # Ufak test
+                model.generate_content("T", request_options={"timeout": 3})
                 return model
             except: continue
         
-        # Listeden bulma
+        # 2. Eğer listedekiler olmazsa sistemden bul
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Önce 'flash' ara
         for m_name in available_models:
             if 'flash' in m_name: return genai.GenerativeModel(m_name)
-        if available_models: return genai.GenerativeModel(available_models[0])
+        
+        # Yoksa herhangi birini al
+        if available_models: 
+            # model isminden 'models/' kısmını temizle
+            clean_name = available_models[0].replace("models/", "")
+            return genai.GenerativeModel(clean_name)
             
     except Exception: return None
     return None
 
-# --- GÜÇLENDİRİLMİŞ CEVAP ALMA ---
+# --- 4. CEVAP ÜRETME MERKEZİ ---
 def get_ai_response_robust(prompt_history):
     if "GOOGLE_API_KEYS" not in st.secrets:
         st.error("HATA: Secrets dosyasında 'GOOGLE_API_KEYS' bulunamadı!")
@@ -57,20 +76,13 @@ def get_ai_response_robust(prompt_history):
     shuffled_keys = list(api_keys)
     random.shuffle(shuffled_keys)
     
-    # 1. GÜVENLİK AYARLARI
+    # Güvenlik Filtrelerini Kapat (Kriz senaryoları için)
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
-    
-    # 2. ÜRETİM AYARLARI (JSON KİLİDİ AKTİF)
-    generation_config = {
-        "temperature": 0.7,
-        "max_output_tokens": 8192,
-        "response_mime_type": "application/json", # <-- BU SATIR HATAYI YOK EDER
-    }
     
     last_error = ""
     
@@ -81,46 +93,39 @@ def get_ai_response_robust(prompt_history):
                 response = model.generate_content(
                     prompt_history, 
                     safety_settings=safety_settings,
-                    generation_config=generation_config, 
-                    request_options={"timeout": 90} 
+                    request_options={"timeout": 60} 
                 )
                 clean_text = clean_json(response.text)
                 return json.loads(clean_text)
             except Exception as e:
-                error_msg = str(e)
-                # Extra data, 504 veya 429 hatalarında diğer anahtara geç
-                if any(x in error_msg for x in ["504", "429", "Extra data", "JSONDecodeError"]):
-                    last_error = f"Yedek sunucuya geçiliyor... ({api_key[:5]})"
-                    continue 
-                else:
-                    last_error = error_msg
-                    continue
+                # Sadece gerçek hataları kaydet, denemeye devam et
+                last_error = str(e)
+                continue
     
-    st.error(f"Bağlantı sorunu: {last_error}")
+    st.error(f"Sistem şu an cevap veremiyor. (Son Hata: {last_error})")
     return None
 
-# --- OYUN DEĞİŞKENLERİ ---
+# --- 5. OYUN DEĞİŞKENLERİ ---
 if "history" not in st.session_state: st.session_state.history = []
 if "stats" not in st.session_state: st.session_state.stats = {"money": 50, "team": 50, "motivation": 50}
 if "month" not in st.session_state: st.session_state.month = 0
 if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
 
-# --- OYUN SENARYOSU (PROMPT: GÖRSEL DÜZENLİ) ---
+# --- 6. SENARYO YÖNETİCİSİ ---
 def run_game_turn(user_input):
     system_prompt = """
     Sen 'Startup Survivor' oyunusun. ACIMASIZ bir oyun yöneticisisin.
     
     GÖREVLERİN:
     1. Hamleyi yorumla.
-    2. Detaylı bir KRİZ senaryosu yaz.
-    3. SEÇENEKLERİ SUN.
+    2. KRİZ senaryosu yaz.
+    3. A ve B SEÇENEKLERİNİ SUN.
     
-    ÇOK ÖNEMLİ GÖRSEL KURALLAR:
-    - Kriz metninden sonra mutlaka boşluk bırak.
-    - A ve B şıklarını ASLA bitişik yazma. 
-    - Şıkların arasında bir satır boşluk olsun.
-    - Şık başlıklarını (Örn: "A) ...") **KALIN** yazarak vurgula.
+    GÖRSEL KURAL:
+    - Şıkların başlıklarını **KALIN** yap.
+    - Şıkların arasına BOŞ SATIR koy.
+    - Metinleri sıkıştırma.
     
     ÇIKTI FORMATI (JSON):
     {
@@ -138,9 +143,9 @@ def run_game_turn(user_input):
 
     return get_ai_response_robust(chat_history)
 
-# --- ARAYÜZ ---
+# --- 7. ARAYÜZ (GÖRSEL DÜZENLEMELER) ---
 st.title("💀 Startup Survivor")
-st.caption("Mode: Stable | JSON Lock: ON 🟢")
+st.caption("v3.0 Stable | Turbo Mode ⚡")
 st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
@@ -153,6 +158,7 @@ col3.progress(safe_progress(st.session_state.stats['motivation']))
 
 st.markdown("---")
 
+# Sohbet Geçmişi
 for msg in st.session_state.history:
     if msg["role"] == "model":
         try: content = json.loads(msg["parts"][0])["text"]
@@ -162,6 +168,7 @@ for msg in st.session_state.history:
         if "Sen 'Startup Survivor'" not in msg["parts"][0]:
             with st.chat_message("user"): st.write(msg["parts"][0])
 
+# Oyun Akışı
 if st.session_state.month == 0:
     st.info("Hoş geldin! Girişim fikrin ne?")
     startup_idea = st.chat_input("Örn: Yapay zeka destekli kedi maması...")
@@ -174,6 +181,7 @@ if st.session_state.month == 0:
                 st.session_state.stats = response["stats"]
                 st.session_state.month = response["month"]
                 st.rerun()
+
 elif not st.session_state.game_over:
     user_move = st.chat_input("Hamleni yap (A, B veya kendi stratejin)...")
     if user_move:
@@ -190,7 +198,6 @@ elif not st.session_state.game_over:
                 st.rerun()
     
     # --- SCROLL (KAYDIRMA) ÇÖZÜMÜ ---
-    # En alta görünmez boşluk ekleyerek chat kutusunun yazıyı kapatmasını engelliyoruz
     st.write("<br><br><br>", unsafe_allow_html=True) 
 
 else:
