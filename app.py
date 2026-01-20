@@ -8,7 +8,20 @@ import re
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="centered")
 
-# --- YARDIMCI: JSON TEMİZLEYİCİ ---
+# --- YARDIMCI: DEĞERLERİ GÜVENLİ HALE GETİRME (BU KISIM YENİ) ---
+def safe_progress(value):
+    """
+    Yapay zeka bazen 100'den büyük veya 0'dan küçük sayılar verebilir.
+    Bu fonksiyon, ilerleme çubuğunun çökmemesi için değeri 0.0 - 1.0 arasına sıkıştırır.
+    """
+    try:
+        val = float(value)
+        if val > 100: return 1.0
+        if val < 0: return 0.0
+        return val / 100.0
+    except:
+        return 0.5 # Hata olursa ortada dursun
+
 def clean_json(text):
     try:
         text = text.replace("```json", "").replace("```", "").strip()
@@ -23,19 +36,16 @@ def clean_json(text):
 # --- AKILLI MODEL SEÇİCİ ---
 def get_best_model(api_key):
     genai.configure(api_key=api_key)
-    # Öncelik sırası: Hızlı olan Flash modelleri
     priority_list = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
     
     try:
         for model_name in priority_list:
             try:
                 model = genai.GenerativeModel(model_name)
-                # Ufak test
                 model.generate_content("T", request_options={"timeout": 5})
                 return model
             except: continue
         
-        # Listeden bulma (Yedek plan)
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m_name in available_models:
             if 'flash' in m_name: return genai.GenerativeModel(m_name)
@@ -44,7 +54,7 @@ def get_best_model(api_key):
     except Exception: return None
     return None
 
-# --- GÜÇLENDİRİLMİŞ CEVAP ALMA FONKSİYONU ---
+# --- CEVAP ALMA FONKSİYONU ---
 def get_ai_response_robust(prompt_history):
     if "GOOGLE_API_KEYS" not in st.secrets:
         st.error("HATA: Secrets dosyasında 'GOOGLE_API_KEYS' bulunamadı!")
@@ -54,7 +64,6 @@ def get_ai_response_robust(prompt_history):
     shuffled_keys = list(api_keys)
     random.shuffle(shuffled_keys)
     
-    # Güvenlik ayarlarını kapatıyoruz ki kriz senaryolarını engellemesin
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -68,27 +77,23 @@ def get_ai_response_robust(prompt_history):
         model = get_best_model(api_key)
         if model:
             try:
-                # BURASI KRİTİK: Süreyi 90 saniyeye çıkardık
                 response = model.generate_content(
                     prompt_history, 
                     safety_settings=safety_settings,
                     request_options={"timeout": 90} 
                 )
-                
                 clean_text = clean_json(response.text)
                 return json.loads(clean_text)
-                
             except Exception as e:
                 error_msg = str(e)
-                # Eğer 504 veya 429 hatasıysa diğer anahtarı dene
                 if "504" in error_msg or "429" in error_msg:
-                    last_error = f"Zaman aşımı veya kota ({api_key[:5]}...)"
+                    last_error = f"Zaman aşımı/Kota ({api_key[:5]}...)"
                     continue 
                 else:
                     last_error = error_msg
                     continue
     
-    st.error(f"Sunucular şu an aşırı yoğun. Lütfen 10 saniye bekleyip tekrar deneyin. (Hata: {last_error})")
+    st.error(f"Sunucular cevap veremedi. Hata: {last_error}")
     return None
 
 # --- OYUN DEĞİŞKENLERİ ---
@@ -98,21 +103,25 @@ if "month" not in st.session_state: st.session_state.month = 0
 if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
 
-# --- OYUN SENARYOSU (PROMPT) ---
+# --- OYUN SENARYOSU ---
 def run_game_turn(user_input):
     system_prompt = """
     Sen 'Startup Survivor' oyunusun. ACIMASIZ bir oyun yöneticisisin.
     
-    GÖREVLERİN:
-    1. Kullanıcının girdiği hamleyi (A, B veya kendi yazdığı strateji) yorumla. Eğer mantıklıysa ödüllendir, saçmaysa cezalandır.
-    2. Şirketin o anki durumuna uygun yeni bir KRİZ yarat.
-    3. Kullanıcıya çıkış yolu olarak A ve B seçenekleri sun (Ama kullanıcı kendi fikrini de yazabilir, bunu unutma).
+    ÖNEMLİ KURAL: 
+    Para (Money), Ekip (Team) ve Motivasyon puanlarını 0 ile 100 arasında tutmaya çalış. 
+    Ama eğer senaryo gereği çok para vermen gerekirse verebilirsin, sistem bunu halleder.
     
-    ÇIKTI FORMATI (Sadece bu JSON formatını kullan):
+    GÖREVLERİN:
+    1. Hamleyi yorumla (Ödül veya Ceza).
+    2. Yeni KRİZ yarat.
+    3. A ve B seçenekleri sun.
+    
+    ÇIKTI FORMATI (SADECE JSON):
     {
-        "text": "Hamlenin sonucu... \n\n🔥 YENİ KRİZ: [Kriz detayları]... \n\nSeçeneklerin:\nA) [Riskli ama ucuz yol]\nB) [Güvenli ama pahalı yol]\n(Veya kendi stratejini yazabilirsin)",
-        "month": (ay numarası),
-        "stats": {"money": (yeni para), "team": (yeni ekip), "motivation": (yeni motivasyon)},
+        "text": "Hikaye...",
+        "month": (ay),
+        "stats": {"money": 50, "team": 50, "motivation": 50},
         "game_over": false,
         "game_over_reason": ""
     }
@@ -124,18 +133,26 @@ def run_game_turn(user_input):
 
     return get_ai_response_robust(chat_history)
 
-# --- ARAYÜZ ---
+# --- ARAYÜZ (GÜNCELLENEN KISIM) ---
 st.title("💀 Startup Survivor")
-st.caption("Game Master Mode: Active | Timeout: 90s 🟢")
+st.caption("Game Master Mode: Active 🟢")
 st.markdown("---")
 
+# İSTATİSTİKLERİ GÜVENLİ GÖSTER
 col1, col2, col3 = st.columns(3)
-col1.metric("💰 Nakit", f"%{st.session_state.stats['money']}")
-col1.progress(st.session_state.stats['money'] / 100)
+
+# Para (950.000 gibi büyük sayı gelirse hata vermez, 100 kabul eder)
+col1.metric("💰 Nakit", f"{st.session_state.stats['money']}")
+col1.progress(safe_progress(st.session_state.stats['money']))
+
+# Ekip
 col2.metric("👥 Ekip", f"%{st.session_state.stats['team']}")
-col2.progress(st.session_state.stats['team'] / 100)
+col2.progress(safe_progress(st.session_state.stats['team']))
+
+# Motivasyon
 col3.metric("🔥 Motivasyon", f"%{st.session_state.stats['motivation']}")
-col3.progress(st.session_state.stats['motivation'] / 100)
+col3.progress(safe_progress(st.session_state.stats['motivation']))
+
 st.markdown("---")
 
 # Mesaj Geçmişi
@@ -153,7 +170,7 @@ if st.session_state.month == 0:
     st.info("Hoş geldin! Girişim fikrin ne?")
     startup_idea = st.chat_input("Örn: Yapay zeka destekli kedi maması...")
     if startup_idea:
-        with st.spinner("Yatırımcılar fikrini analiz ediyor (Bu işlem 15-20 saniye sürebilir)..."):
+        with st.spinner("Yatırımcılar fikrini analiz ediyor..."):
             response = run_game_turn(f"Oyun başlasın. Fikrim: {startup_idea}")
             if response:
                 st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
