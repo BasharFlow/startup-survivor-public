@@ -5,53 +5,28 @@ import random
 import time
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Startup Survivor", page_icon="🚀", layout="centered")
+st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="centered")
 
-# --- AKILLI MODEL SEÇİCİ (Sorunu Çözen Kısım) ---
+# --- AKILLI MODEL SEÇİCİ ---
 def get_best_model(api_key):
-    """
-    Bu fonksiyon, verilen anahtarın kullanabileceği modelleri listeler
-    ve 'flash' içeren en yeni modeli otomatik seçer.
-    """
     genai.configure(api_key=api_key)
-    
-    # Öncelikli olarak denenecek modeller (Senin listene göre)
-    priority_list = [
-        'gemini-2.5-flash', 
-        'gemini-2.0-flash', 
-        'gemini-1.5-flash',
-        'gemini-1.5-pro'
-    ]
+    priority_list = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
     
     try:
-        # Önce hızlıca favorileri deneyelim (Listeleme yapmadan)
         for model_name in priority_list:
             try:
                 model = genai.GenerativeModel(model_name)
-                # Ufak bir test atışı
                 model.generate_content("Test", request_options={"timeout": 5})
-                return model # Çalıştı! Bunu kullan.
-            except:
-                continue # Bu çalışmadı, sonrakine geç.
+                return model
+            except: continue
         
-        # Eğer favoriler çalışmazsa, hesabın tüm listesini çekip bakalım
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # Listeden 'flash' içeren ilkini kap
+        # Listeden bulmaca
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m_name in available_models:
-            if 'flash' in m_name:
-                return genai.GenerativeModel(m_name)
-                
-        # Hiçbiri yoksa listeden ilkini al
-        if available_models:
-            return genai.GenerativeModel(available_models[0].name)
+            if 'flash' in m_name: return genai.GenerativeModel(m_name)
+        if available_models: return genai.GenerativeModel(available_models[0])
             
-    except Exception as e:
-        return None
-    
+    except Exception: return None
     return None
 
 # --- ÇOKLU ANAHTAR YÖNETİMİ ---
@@ -62,22 +37,18 @@ def get_ai_response_robust(prompt_history):
         
     api_keys = st.secrets["GOOGLE_API_KEYS"]
     shuffled_keys = list(api_keys)
-    random.shuffle(shuffled_keys) # Yük dengeleme
+    random.shuffle(shuffled_keys)
     
     for api_key in shuffled_keys:
-        # Bu anahtar için en iyi modeli bul
         model = get_best_model(api_key)
-        
         if model:
             try:
-                # Modeli bulduk, şimdi asıl soruyu soralım
                 response = model.generate_content(prompt_history, request_options={"timeout": 15})
                 text = response.text.replace("```json", "").replace("```", "").strip()
                 return json.loads(text)
-            except Exception:
-                continue # Bu anahtarda veya modelde sorun çıktı, diğer anahtara geç.
+            except Exception: continue
     
-    st.error("Sistem şu an çok yoğun. Lütfen 1 dakika sonra tekrar deneyin.")
+    st.error("Sistem şu an çok yoğun. Lütfen tekrar deneyin.")
     return None
 
 # --- OYUN DEĞİŞKENLERİ ---
@@ -87,14 +58,28 @@ if "month" not in st.session_state: st.session_state.month = 0
 if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
 
-# --- ANA OYUN FONKSİYONU ---
+# --- ANA OYUN FONKSİYONU (GÜNCELLENDİ: ACIMASIZ MOD) ---
 def run_game_turn(user_input):
+    # BURASI DEĞİŞTİ: AI ARTIK DAHA SERT VE OYUN KURUCU
     system_prompt = """
-    Sen 'Startup Survivor' adında zorlu bir girişimcilik simülasyonusun.
-    Görevin: Kullanıcının startup'ını 12 ay boyunca hayatta tutmaya çalışmak.
-    Kurallar: 1. Her turda kriz yarat. 2. İstatistikleri (Money, Team, Motivation) yönet. 3. Biri 0 olursa Game Over.
-    Cevabını SADECE şu JSON formatında ver:
-    {"text": "Hikaye...", "month": (ay), "stats": {"money": 50, "team": 50, "motivation": 50}, "game_over": false, "game_over_reason": ""}
+    Sen 'Startup Survivor' oyunusun. ASLA normal bir asistan gibi konuşma.
+    Sen acımasız, gerçekçi bir senaryo yöneticisisin.
+    
+    GÖREVİN:
+    1. Kullanıcının son hamlesini veya fikrini kısaca eleştir (Riskleri yüzüne vur).
+    2. Şirketin durumuna uygun, çözmesi zor bir KRİZ (Olay) yarat.
+    3. Kullanıcıya İKİ SEÇENEK (A ve B) sun. (Biri pahalı ama güvenli, diğeri riskli ama ucuz olsun).
+    
+    ÖNEMLİ: Çıktın TEK BİR JSON objesi olmalı. "text" kısmında tüm hikaye, kriz ve şıklar alt alta yazmalı.
+    
+    JSON FORMATI:
+    {
+        "text": "Fikrin güzel ama pazar doymuş durumda... \n\n🔥 KRİZ: Sunucuların lansman gecesi çöktü! Müşteriler Twitter'da linçliyor. \n\nNe yapacaksın? \nA) Ekipman kirala ve sorunu çöz (-$15 Para) \nB) Yazılımcıları sabaha kadar çalıştır (-20 Motivasyon) \nC) Veya kendi stratejini yaz...",
+        "month": (bir sonraki ay numarası),
+        "stats": {"money": (yeni para), "team": (yeni ekip), "motivation": (yeni motivasyon)},
+        "game_over": (true/false),
+        "game_over_reason": "(Eğer battıysa nedeni)"
+    }
     """
     
     chat_history = [{"role": "user", "parts": [system_prompt]}]
@@ -104,8 +89,8 @@ def run_game_turn(user_input):
     return get_ai_response_robust(chat_history)
 
 # --- ARAYÜZ ---
-st.title("🚀 Startup Survivor")
-st.caption("Auto-Model Detection Active 🟢")
+st.title("💀 Startup Survivor")
+st.caption("Game Master Mode: Active 🔴")
 st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
@@ -127,10 +112,10 @@ for msg in st.session_state.history:
             with st.chat_message("user"): st.write(msg["parts"][0])
 
 if st.session_state.month == 0:
-    st.info("Hoş geldin! Şirketinin adı ne?")
-    startup_idea = st.chat_input("Girişim fikrini yaz...")
+    st.info("Hoş geldin! Girişim fikrin ne?")
+    startup_idea = st.chat_input("Örn: Yapay zeka destekli kedi maması...")
     if startup_idea:
-        with st.spinner("Yatırımcılar fikrini inceliyor..."):
+        with st.spinner("Yatırımcılar fikrini parçalıyor..."):
             response = run_game_turn(f"Oyun başlasın. Fikrim: {startup_idea}")
             if response:
                 st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
@@ -139,10 +124,10 @@ if st.session_state.month == 0:
                 st.session_state.month = response["month"]
                 st.rerun()
 elif not st.session_state.game_over:
-    user_move = st.chat_input("Ne yapacaksın?")
+    user_move = st.chat_input("Hamleni yap (A, B veya kendi stratejin)...")
     if user_move:
         st.session_state.history.append({"role": "user", "parts": [user_move]})
-        with st.spinner("Piyasa tepki veriyor..."):
+        with st.spinner("Sonuçlar hesaplanıyor..."):
             response = run_game_turn(user_move)
             if response:
                 st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
