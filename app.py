@@ -4,12 +4,15 @@ import json
 import random
 import time
 
-# --- 1. SAYFA AYARLARI (EN BAŞTA OLMALI) ---
+# --- 1. SAYFA AYARLARI ---
 st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="centered")
 
 # --- 2. YARDIMCI FONKSİYONLAR ---
 def safe_progress(value):
-    """İlerleme çubuğunun 100'den büyük sayılarda çökmesini engeller."""
+    """
+    İstatistikler 100'ün üzerine çıkarsa veya 0'ın altına inerse
+    uygulamanın çökmesini engeller.
+    """
     try:
         val = float(value)
         if val > 100: return 1.0
@@ -19,29 +22,41 @@ def safe_progress(value):
         return 0.5
 
 def clean_json(text):
-    """JSON temizliği yapar."""
+    """
+    "Aynı cevabı iki kere alma" sorununu çözen temizlikçi.
+    Metnin içinden sadece İLK geçerli JSON parçasını çekip alır.
+    """
+    # Markdown temizliği
     text = text.replace("```json", "").replace("```", "").strip()
-    # Bazen model çift parantez yollar, en dıştakini bulalım
+    
+    # İlk süslü parantezi bul ({)
     start = text.find("{")
+    # Son süslü parantezi bul (})
     end = text.rfind("}") + 1
+    
     if start != -1 and end != 0:
+        # Eğer yapay zeka aptallık edip JSON'dan sonra bir şeyler daha yazdıysa
+        # veya cevabı iki kere yazdıysa, sadece ilkini alıp gerisini atıyoruz.
         return text[start:end]
+    
     return text
 
-# --- 3. AKILLI MODEL SEÇİCİ (KEY TESTER MANTIĞI) ---
+# --- 3. AKILLI MODEL SEÇİCİ ---
 def get_best_model(api_key):
+    """
+    Anahtarın hangi modelle çalıştığını otomatik bulur.
+    Bozuk veya kapalı modellerle vakit kaybetmez.
+    """
     genai.configure(api_key=api_key)
     
-    # LİSTE GÜNCELLENDİ: Key Tester'da çalışan modelleri önceliklendirdik
-    # 1.5-flash sorunlu olduğu için onu sona attık veya çıkardık.
+    # Öncelik Sırası: Hızlı ve JSON Modu destekleyenler
     priority_list = [
-        'gemini-2.0-flash',      # En Hızlısı
-        'gemini-1.5-pro',        # En Akıllısı
-        'gemini-pro'             # En Eskisi (Garanti Çalışır)
+        'gemini-2.0-flash', 
+        'gemini-1.5-pro',
+        'gemini-1.5-flash'
     ]
     
     try:
-        # 1. Hızlı Liste Kontrolü
         for model_name in priority_list:
             try:
                 model = genai.GenerativeModel(model_name)
@@ -50,18 +65,12 @@ def get_best_model(api_key):
                 return model
             except: continue
         
-        # 2. Eğer listedekiler olmazsa sistemden bul
+        # Listeden bulma (Yedek Plan)
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Önce 'flash' ara
         for m_name in available_models:
             if 'flash' in m_name: return genai.GenerativeModel(m_name)
-        
-        # Yoksa herhangi birini al
         if available_models: 
-            # model isminden 'models/' kısmını temizle
-            clean_name = available_models[0].replace("models/", "")
-            return genai.GenerativeModel(clean_name)
+            return genai.GenerativeModel(available_models[0].replace("models/", ""))
             
     except Exception: return None
     return None
@@ -83,6 +92,13 @@ def get_ai_response_robust(prompt_history):
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
+
+    # --- KRİTİK AYAR: JSON KİLİDİ ---
+    generation_config = {
+        "temperature": 0.7,
+        "max_output_tokens": 8192,
+        "response_mime_type": "application/json" # <-- BU SATIR ÇİFT CEVAP HATASINI ENGELLER
+    }
     
     last_error = ""
     
@@ -93,16 +109,18 @@ def get_ai_response_robust(prompt_history):
                 response = model.generate_content(
                     prompt_history, 
                     safety_settings=safety_settings,
-                    request_options={"timeout": 60} 
+                    generation_config=generation_config, 
+                    request_options={"timeout": 90} 
                 )
                 clean_text = clean_json(response.text)
                 return json.loads(clean_text)
             except Exception as e:
-                # Sadece gerçek hataları kaydet, denemeye devam et
-                last_error = str(e)
+                error_msg = str(e)
+                # Hata ne olursa olsun (Extra data, Timeout, 429) pes etme, diğer anahtarı dene
+                last_error = f"Yeniden deneniyor... ({api_key[:5]}) - Hata: {error_msg}"
                 continue
     
-    st.error(f"Sistem şu an cevap veremiyor. (Son Hata: {last_error})")
+    st.error(f"Sistem şu an cevap veremiyor. {last_error}")
     return None
 
 # --- 5. OYUN DEĞİŞKENLERİ ---
@@ -122,12 +140,11 @@ def run_game_turn(user_input):
     2. KRİZ senaryosu yaz.
     3. A ve B SEÇENEKLERİNİ SUN.
     
-    GÖRSEL KURAL:
+    GÖRSEL KURALLAR:
     - Şıkların başlıklarını **KALIN** yap.
-    - Şıkların arasına BOŞ SATIR koy.
-    - Metinleri sıkıştırma.
+    - Şıkların arasına ve krizden sonraya BOŞ SATIR koy.
     
-    ÇIKTI FORMATI (JSON):
+    ÇIKTI FORMATI (SADECE JSON):
     {
         "text": "Hikaye... \n\n🔥 KRİZ: [Detay]... \n\nNe yapacaksın?\n\n**A) [Başlık]**\n[Detay...]\n\n**B) [Başlık]**\n[Detay...]",
         "month": (ay),
@@ -143,9 +160,9 @@ def run_game_turn(user_input):
 
     return get_ai_response_robust(chat_history)
 
-# --- 7. ARAYÜZ (GÖRSEL DÜZENLEMELER) ---
+# --- 7. ARAYÜZ ---
 st.title("💀 Startup Survivor")
-st.caption("v3.0 Stable | Turbo Mode ⚡")
+st.caption("Final Version | JSON Locked 🟢")
 st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
@@ -197,7 +214,7 @@ elif not st.session_state.game_over:
                     st.session_state.game_over_reason = response.get("game_over_reason")
                 st.rerun()
     
-    # --- SCROLL (KAYDIRMA) ÇÖZÜMÜ ---
+    # Scroll (Kaydırma) Çözümü - Görünmez Yastık
     st.write("<br><br><br>", unsafe_allow_html=True) 
 
 else:
