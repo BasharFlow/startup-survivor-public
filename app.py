@@ -8,7 +8,6 @@ import time
 st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="wide")
 
 # --- 2. MOD VE RENK AYARLARI ---
-# Modlara göre renk kodları
 MODE_COLORS = {
     "Gerçekçi": "#2ECC71",  # Yeşil
     "Zor": "#F1C40F",       # Sarı
@@ -16,52 +15,106 @@ MODE_COLORS = {
     "Extreme": "#9B59B6"    # Mor
 }
 
-# --- 3. CSS İLE GÖRSEL DÜZENLEMELER (DİNAMİK) ---
+# --- 3. PREMIUM CSS TASARIMI ---
 def apply_custom_css(selected_mode):
     color = MODE_COLORS[selected_mode]
     st.markdown(
         f"""
         <style>
+        /* Genel Font ve Arkaplan */
+        .stApp {{
+            font-family: 'Inter', sans-serif;
+        }}
+        
+        /* Sidebar Ayarı */
         [data-testid="stSidebar"] {{
-            min-width: 200px;
-            max-width: 250px;
+            min-width: 220px;
+            max-width: 260px;
+            background-color: #1a1b21;
+            border-right: 1px solid #333;
         }}
-        .main-header {{
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: {color}; /* Başlık rengi moda göre değişir */
-            text-align: center;
-            margin-bottom: 0.5rem;
+
+        /* Hero Başlık (Gradient Efekt) */
+        .hero-title {{
+            font-size: 3rem;
+            font-weight: 800;
+            background: -webkit-linear-gradient(45deg, {color}, #ffffff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0px;
         }}
-        .mode-badge {{
-            background-color: {color};
-            color: black;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-weight: bold;
-            font-size: 0.8rem;
-            text-align: center;
-            display: inline-block;
-            margin-bottom: 1rem;
+        .hero-subtitle {{
+            font-size: 1.2rem;
+            color: #b0b3b8;
+            margin-bottom: 30px;
+            font-weight: 300;
         }}
-        .rules-box {{
+
+        /* Bilgi Kartları (Card Design) */
+        .info-card {{
             background-color: #262730;
-            padding: 25px;
-            border-radius: 10px;
-            border: 1px solid {color}; /* Çerçeve rengi moda göre değişir */
-            margin-bottom: 20px;
-            font-size: 1.05rem;
-        }}
-        .example-box {{
-            background-color: #1E1E1E;
-            padding: 15px;
-            border-left: 5px solid {color}; /* Sol çizgi rengi moda göre değişir */
-            border-radius: 5px;
-            margin-top: 10px;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #363945;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 15px;
-            font-style: italic;
-            color: #E0E0E0;
-            font-size: 0.95rem;
+            transition: transform 0.2s;
+        }}
+        .info-card:hover {{
+            transform: translateY(-2px);
+            border-color: {color};
+        }}
+        
+        /* Adım Başlıkları */
+        .step-header {{
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }}
+        .step-icon {{
+            margin-right: 10px;
+            background: {color};
+            color: #000;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }}
+
+        /* Küçük Kaybetme Şartları */
+        .loss-condition-box {{
+            background-color: #15161A;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid {color};
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 20px;
+        }}
+        .loss-item {{
+            display: inline-block;
+            margin-right: 15px;
+            color: #ccc;
+        }}
+        
+        /* Mod Rozeti */
+        .mode-badge {{
+            background-color: {color}20; /* %20 Opaklık */
+            color: {color};
+            border: 1px solid {color};
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         </style>
         """,
@@ -123,7 +176,7 @@ def get_ai_response_robust(prompt_history):
     ]
 
     generation_config = {
-        "temperature": 0.8, # Biraz daha yaratıcı olsun
+        "temperature": 0.8,
         "max_output_tokens": 8192,
         "response_mime_type": "application/json"
     }
@@ -156,60 +209,42 @@ if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
 if "selected_mode" not in st.session_state: st.session_state.selected_mode = "Gerçekçi"
 
-# --- 8. SENARYO YÖNETİCİSİ (MODLARA GÖRE KİŞİLİK) ---
+# --- 8. SENARYO YÖNETİCİSİ ---
 def run_game_turn(user_input):
     current_month = st.session_state.month
     mode = st.session_state.selected_mode
     
-    # --- MODA GÖRE AI KİŞİLİĞİ ---
     if mode == "Gerçekçi":
-        persona = """
-        Sen DENGELİ ve GERÇEKÇİ bir oyun yöneticisisin. 
-        Gerçek dünya standartlarına (enflasyon, rakip hamleleri, müşteri şikayetleri) uygun senaryolar üret. 
-        Mantıklı hamleleri ödüllendir, saçma hamleleri cezalandır.
-        """
+        persona = "Sen DENGELİ ve PROFESYONEL bir simülasyon motorusun. Gerçek dünya piyasa koşullarını, enflasyonu ve rekabeti simüle et. Mantıklı kararları ödüllendir."
     elif mode == "Zor":
-        persona = """
-        Sen ZORLAYICI ve DETAYCI bir oyun yöneticisisin.
-        Kullanıcının önüne sunduğun A ve B seçenekleri 'Kötünün İyisi' (Dilemma) olmalı.
-        Seçenekler ya çok pahalı olsun ya da büyük risk taşısın.
-        Amacın: Kullanıcıyı A veya B'yi seçmek yerine KENDİ STRATEJİSİNİ yazmaya zorlamak.
-        """
+        persona = "Sen ZORLAYICI bir finansal denetçisin. Kullanıcıya sunduğun seçenekler her zaman bir bedel (trade-off) içermeli. Kolay çıkış yolu bırakma."
     elif mode == "Spartan":
-        persona = """
-        Sen ACIMASIZ ve ZALİM bir oyun yöneticisisin (Dark Souls Modu).
-        Amacın oyuncuyu pes ettirmek. İmkansıza yakın hukuki, teknik veya finansal krizler yarat.
-        Şans faktörü oyuncunun aleyhine işlesin. Başarı ihtimalini minimumda tut.
-        """
+        persona = "Sen ACIMASIZ bir piyasa koşulusun (Bear Market). Oyuncunun batması için hukuki, teknik ve finansal engelleri en üst düzeye çıkar. Şans faktörü minimumda."
     elif mode == "Extreme":
-        persona = """
-        Sen KAOTİK, EĞLENCELİ ve TAHMİN EDİLEMEZ bir oyun yöneticisisin.
-        Mantığı çöpe at! Olay ufku sınırsız olsun.
-        Örnek Olaylar: Ofise meteor düşmesi, uzaylıların gelip yatırım yapması, muhasebecinin tüm parayı coin'de batırması, haşere istilası, zaman yolcularının gelmesi.
-        Bir turda oyuncuyu batırabilir, diğer turda milyoner yapabilirsin. Absürt ol!
-        """
+        persona = "Sen KAOS TEORİSİSİN. Mantığı unut. Beklenmedik, absürt, komik veya felaket olaylar yarat (Meteor düşmesi, Uzaylı istilası, Viral kedi videoları sayesinde satış patlaması vb.)."
     
     system_prompt = f"""
-    Sen 'Startup Survivor' oyunusun. Mod: {mode}.
+    Sen 'Startup Survivor' simülasyonusun. Mod: {mode}.
     {persona}
     
-    DURUM:
+    MEVCUT DURUM:
     - Ay: {current_month} / 12
-    - Hedef: 12 Ay Hayatta Kalmak.
+    - Hedef: 12. Ayı tamamlamak (Exit Stratejisi).
     
     GÖREVLERİN:
-    1. Hamleyi moda uygun yorumla.
-    2. 12. ay bittiyse ve batmadıysa KAZANDIR.
-    3. Değilse moda uygun YENİ BİR KRİZ yaz.
-    4. A ve B seçeneklerini sun.
+    1. Kullanıcı girdisini analiz et.
+    2. Hamleyi simüle et ve sonuçlarını yaz.
+    3. 12. ay bittiyse ve şirket batmadıysa KAZANMA MESAJI ver.
+    4. Değilse yeni bir OLAĞANÜSTÜ DURUM (Kriz/Fırsat) yarat.
+    5. A ve B stratejik seçeneklerini sun.
     
-    GÖRSEL KURALLAR:
-    - Şık başlıklarını **KALIN** yap.
-    - Şıkların arasına BOŞ SATIR koy.
+    GÖRSEL FORMAT:
+    - Başlıkları **KALIN** yap.
+    - Satır aralarında boşluk bırak.
     
     ÇIKTI FORMATI (JSON):
     {{
-        "text": "Hikaye... \n\n🔥 KRİZ: [Detay]... \n\nNe yapacaksın?\n\n**A) [Başlık]**\n[Detay...]\n\n**B) [Başlık]**\n[Detay...]",
+        "text": "Simülasyon Raporu... \n\n🔥 DURUM: [Olay Detayı]... \n\nStratejin nedir?\n\n**A) [Strateji Adı]**\n[Açıklama...]\n\n**B) [Strateji Adı]**\n[Açıklama...]",
         "month": {current_month + 1},
         "stats": {{"money": 50, "team": 50, "motivation": 50}},
         "game_over": false,
@@ -223,106 +258,130 @@ def run_game_turn(user_input):
 
     return get_ai_response_robust(chat_history)
 
-# --- 9. ARAYÜZ VE SIDEBAR ---
+# --- 9. ARAYÜZ ---
 
-# Sidebar: Mod Seçimi ve İstatistikler
+# --- SIDEBAR (SADELEŞTİRİLDİ) ---
 with st.sidebar:
-    st.markdown("### ⚙️ Oyun Ayarları")
+    st.markdown("### ⚙️ Simülasyon Ayarları")
     
-    # Oyun başlamadıysa mod seçtir, başladıysa sadece göster (değiştirilemez)
+    # Sadece Dropdown (Yazı yok, temiz)
     if len(st.session_state.history) == 0:
         selected_mode = st.selectbox(
-            "Zorluk Seviyesi:", 
-            ["Gerçekçi", "Zor", "Spartan", "Extreme"]
+            "Zorluk Modu", 
+            ["Gerçekçi", "Zor", "Spartan", "Extreme"],
+            label_visibility="collapsed" # Başlığı gizle, daha temiz dursun
         )
         st.session_state.selected_mode = selected_mode
+        
+        # Seçilen modun ne olduğunu altına ufak not düşelim
+        mode_descriptions = {
+            "Gerçekçi": "Dengeli piyasa koşulları.",
+            "Zor": "Sınırlı kaynaklar, zor kararlar.",
+            "Spartan": "Acımasız, hata affetmez.",
+            "Extreme": "Kaos ve rastgele olaylar."
+        }
+        st.caption(f"ℹ️ {mode_descriptions[selected_mode]}")
+        
     else:
-        st.info(f"🔒 Mod: **{st.session_state.selected_mode}** (Oyun sırasında değişmez)")
+        # Oyun başladıysa kilitli göster
+        st.success(f"Mod: {st.session_state.selected_mode}")
         selected_mode = st.session_state.selected_mode
 
-    # CSS'i uygula (Rengi değiştir)
+    # CSS Uygula
     apply_custom_css(selected_mode)
     
     st.divider()
-    st.markdown("### 📊 Durum")
     
+    # İstatistikler
     if not st.session_state.game_over:
-        st.caption(f"🗓️ Takvim: {st.session_state.month}. Ay")
+        st.caption(f"🗓️ Süreç: {st.session_state.month}. Ay")
         st.progress(min(st.session_state.month / 12.0, 1.0))
     
     c1, c2 = st.columns([1, 3])
     with c1: st.write("💰")
     with c2: st.progress(safe_progress(st.session_state.stats['money']))
-    st.caption(f"Nakit: %{st.session_state.stats['money']}")
     
     c1, c2 = st.columns([1, 3])
     with c1: st.write("👥")
     with c2: st.progress(safe_progress(st.session_state.stats['team']))
-    st.caption(f"Ekip: %{st.session_state.stats['team']}")
     
     c1, c2 = st.columns([1, 3])
     with c1: st.write("🔥")
     with c2: st.progress(safe_progress(st.session_state.stats['motivation']))
-    st.caption(f"Motivasyon: %{st.session_state.stats['motivation']}")
     
     st.divider()
-    if st.button("🔄 Sıfırla", use_container_width=True):
+    if st.button("Yeniden Başlat", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
 # --- ANA EKRAN ---
 
-# 1. Başlangıç Ekranı
+# 1. LANDING PAGE (PROFESYONEL KARŞILAMA)
 if len(st.session_state.history) == 0:
-    st.markdown('<div class="main-header">💀 Startup Survivor</div>', unsafe_allow_html=True)
     
-    # Moda göre açıklama metni değişir
-    mode_desc = ""
-    if selected_mode == "Gerçekçi":
-        mode_desc = "Standart girişimcilik deneyimi. Dengeli ve öğretici."
-        mode_badge = "🟢 GERÇEKÇİ MOD"
-    elif selected_mode == "Zor":
-        mode_desc = "Seçenekler yetersiz, krizler karmaşık. Kendi yolunu çizmek zorundasın."
-        mode_badge = "🟡 ZOR MOD"
-    elif selected_mode == "Spartan":
-        mode_desc = "İmkansıza yakın. Oyun senin kaybetmeni istiyor. Sadece en inatçılar dayanabilir."
-        mode_badge = "🔴 SPARTAN MOD"
-    elif selected_mode == "Extreme":
-        mode_desc = "Mantık yok, kaos var! Uzaylılar, meteorlar, absürt olaylar. Her an her şey olabilir."
-        mode_badge = "🟣 EXTREME (KAOS) MOD"
+    # Hero Bölümü
+    st.markdown('<div class="hero-title">Startup Survivor</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Gelişmiş Girişimcilik ve Kriz Yönetimi Simülasyonu</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div style="text-align: center;"><span class="mode-badge">{mode_badge}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-text">{mode_desc}</div>', unsafe_allow_html=True)
-
-    # Rehber Kutusu
-    st.markdown(
-        """
-        <div class="rules-box">
-            <h4>🚀 Girişimini Tanımla</h4>
-            <p>Seçtiğin moda uygun bir senaryo için yapay zekaya detay ver:</p>
-            <ul>
-                <li>💡 <strong>Fikir:</strong> Ne yapacaksın?</li>
-                <li>💰 <strong>Bütçe & Kaynak:</strong> Ne kadar paran ve ekibin var?</li>
-                <li>🎯 <strong>Hedef:</strong> Nereye varmak istiyorsun?</li>
-            </ul>
-            <div class="example-box">
-                "Bir e-ticaret sitesi kuracağım. Cebimde 100.000 TL var, tek başımayım ve evden çalışıyorum."
+    # 3 Adımlı "Nasıl Çalışır?" Kartları (Profesyonel Görünüm)
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(
+            """
+            <div class="info-card">
+                <div class="step-header"><span class="step-icon">1</span> Girişimi Tanımla</div>
+                <p style="color:#aaa; font-size:0.9rem;">
+                    Sektör, bütçe ve ekip yapısını sisteme gir. Yapay zeka, bu verilere göre benzersiz bir pazar simülasyonu oluşturur.
+                </p>
             </div>
-            <hr>
-            <h5>💀 Kaybetme Şartları:</h5>
-            <p>Nakit, Ekip veya Motivasyon <strong>0 olursa</strong> oyun biter.</p>
+            """, unsafe_allow_html=True
+        )
+        
+    with col2:
+        st.markdown(
+            """
+            <div class="info-card">
+                <div class="step-header"><span class="step-icon">2</span> Krizleri Yönet</div>
+                <p style="color:#aaa; font-size:0.9rem;">
+                    Her ay finansal, operasyonel veya kaotik bir krizle karşılaşırsın. A/B stratejilerini seç veya kendi çözümünü yaz.
+                </p>
+            </div>
+            """, unsafe_allow_html=True
+        )
+        
+    with col3:
+        st.markdown(
+            """
+            <div class="info-card">
+                <div class="step-header"><span class="step-icon">3</span> Hayatta Kal</div>
+                <p style="color:#aaa; font-size:0.9rem;">
+                    Hedef 12 ay boyunca şirketi batırmadan (Exit) noktasına ulaşmak. Kaynaklarını dengeli kullan.
+                </p>
+            </div>
+            """, unsafe_allow_html=True
+        )
+
+    # Input Alanı (Daha Temiz)
+    startup_idea = st.chat_input("Girişim fikriniz, bütçeniz ve hedefiniz nedir?")
+    
+    # Alt Bilgi (Footer Tarzı Küçük Yazı)
+    st.markdown(
+        f"""
+        <div class="loss-condition-box">
+            <strong>⚠️ Simülasyon Başarısızlık Kriterleri:</strong><br>
+            <span class="loss-item">💰 Nakit < 0</span>
+            <span class="loss-item">👥 Ekip < 0</span>
+            <span class="loss-item">🔥 Motivasyon < 0</span>
         </div>
-        """, 
-        unsafe_allow_html=True
+        """, unsafe_allow_html=True
     )
-    
-    startup_idea = st.chat_input("Girişimini anlat ve başlat...")
-    
+
     if startup_idea:
         with st.chat_message("user"): st.write(startup_idea)
-        st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
+        st.session_state.history.append({"role": "user", "parts": [f"Girişim Detayları: {startup_idea}"]})
         
-        with st.spinner(f"{selected_mode} modunda senaryo oluşturuluyor..."):
+        with st.spinner("Piyasa simülasyonu başlatılıyor..."):
             response = run_game_turn(f"Oyun başlasın. Detaylar: {startup_idea}")
             if response:
                 st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
@@ -330,9 +389,10 @@ if len(st.session_state.history) == 0:
                 st.session_state.month = response["month"]
                 st.rerun()
 
-# 2. Oyun Devam Ediyor
+# 2. OYUN EKRANI
 elif not st.session_state.game_over:
-    st.header("💀 Startup Survivor")
+    st.markdown(f'<span class="mode-badge">{st.session_state.selected_mode} MOD</span>', unsafe_allow_html=True)
+    st.markdown("---")
     
     for msg in st.session_state.history:
         if msg["role"] == "model":
@@ -345,17 +405,17 @@ elif not st.session_state.game_over:
 
     if st.session_state.month > 12:
         st.balloons()
-        st.success("🎉 TEBRİKLER! BU ZORLU YOLCULUĞU TAMAMLADIN!")
-        if st.button("Yeni Macera"):
+        st.success("🏆 SİMÜLASYON BAŞARIYLA TAMAMLANDI! (EXIT)")
+        if st.button("Yeni Simülasyon"):
             st.session_state.clear()
             st.rerun()
     else:
-        user_move = st.chat_input("Hamleni yap...")
+        user_move = st.chat_input("Kararınız nedir?")
         if user_move:
             with st.chat_message("user"): st.write(user_move)
             st.session_state.history.append({"role": "user", "parts": [user_move]})
             
-            with st.spinner("Sonuçlar hesaplanıyor..."):
+            with st.spinner("Analiz ediliyor..."):
                 response = run_game_turn(user_move)
                 if response:
                     st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
@@ -366,19 +426,9 @@ elif not st.session_state.game_over:
                         st.session_state.game_over_reason = response.get("game_over_reason")
                     st.rerun()
 
-# 3. Oyun Bitti
+# 3. OYUN SONU EKRANI
 else:
-    st.header("💀 Startup Survivor")
-    for msg in st.session_state.history:
-        if msg["role"] == "model":
-            try: content = json.loads(msg["parts"][0])["text"]
-            except: content = msg["parts"][0]
-            with st.chat_message("ai"): st.write(content)
-        else:
-            if "Sen 'Startup Survivor'" not in msg["parts"][0]:
-                with st.chat_message("user"): st.write(msg["parts"][0])
-                
-    st.error(f"💀 OYUN BİTTİ: {st.session_state.game_over_reason}")
+    st.error(f"SİMÜLASYON SONLANDI: {st.session_state.game_over_reason}")
     if st.button("Tekrar Dene"):
         st.session_state.clear()
         st.rerun()
