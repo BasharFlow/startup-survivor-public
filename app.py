@@ -9,10 +9,6 @@ st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="cent
 
 # --- 2. YARDIMCI FONKSİYONLAR ---
 def safe_progress(value):
-    """
-    İstatistikler 100'ün üzerine çıkarsa veya 0'ın altına inerse
-    uygulamanın çökmesini engeller.
-    """
     try:
         val = float(value)
         if val > 100: return 1.0
@@ -22,56 +18,29 @@ def safe_progress(value):
         return 0.5
 
 def clean_json(text):
-    """
-    "Aynı cevabı iki kere alma" sorununu çözen temizlikçi.
-    Metnin içinden sadece İLK geçerli JSON parçasını çekip alır.
-    """
-    # Markdown temizliği
     text = text.replace("```json", "").replace("```", "").strip()
-    
-    # İlk süslü parantezi bul ({)
     start = text.find("{")
-    # Son süslü parantezi bul (})
     end = text.rfind("}") + 1
-    
     if start != -1 and end != 0:
-        # Eğer yapay zeka aptallık edip JSON'dan sonra bir şeyler daha yazdıysa
-        # veya cevabı iki kere yazdıysa, sadece ilkini alıp gerisini atıyoruz.
         return text[start:end]
-    
     return text
 
 # --- 3. AKILLI MODEL SEÇİCİ ---
 def get_best_model(api_key):
-    """
-    Anahtarın hangi modelle çalıştığını otomatik bulur.
-    Bozuk veya kapalı modellerle vakit kaybetmez.
-    """
     genai.configure(api_key=api_key)
-    
-    # Öncelik Sırası: Hızlı ve JSON Modu destekleyenler
-    priority_list = [
-        'gemini-2.0-flash', 
-        'gemini-1.5-pro',
-        'gemini-1.5-flash'
-    ]
-    
+    priority_list = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
     try:
         for model_name in priority_list:
             try:
                 model = genai.GenerativeModel(model_name)
-                # Ufak test
                 model.generate_content("T", request_options={"timeout": 3})
                 return model
             except: continue
-        
-        # Listeden bulma (Yedek Plan)
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for m_name in available_models:
             if 'flash' in m_name: return genai.GenerativeModel(m_name)
         if available_models: 
             return genai.GenerativeModel(available_models[0].replace("models/", ""))
-            
     except Exception: return None
     return None
 
@@ -85,7 +54,6 @@ def get_ai_response_robust(prompt_history):
     shuffled_keys = list(api_keys)
     random.shuffle(shuffled_keys)
     
-    # Güvenlik Filtrelerini Kapat (Kriz senaryoları için)
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -93,15 +61,13 @@ def get_ai_response_robust(prompt_history):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
 
-    # --- KRİTİK AYAR: JSON KİLİDİ ---
     generation_config = {
         "temperature": 0.7,
         "max_output_tokens": 8192,
-        "response_mime_type": "application/json" # <-- BU SATIR ÇİFT CEVAP HATASINI ENGELLER
+        "response_mime_type": "application/json"
     }
     
     last_error = ""
-    
     for api_key in shuffled_keys:
         model = get_best_model(api_key)
         if model:
@@ -115,9 +81,7 @@ def get_ai_response_robust(prompt_history):
                 clean_text = clean_json(response.text)
                 return json.loads(clean_text)
             except Exception as e:
-                error_msg = str(e)
-                # Hata ne olursa olsun (Extra data, Timeout, 429) pes etme, diğer anahtarı dene
-                last_error = f"Yeniden deneniyor... ({api_key[:5]}) - Hata: {error_msg}"
+                last_error = f"Hata ({api_key[:5]}...): {str(e)}"
                 continue
     
     st.error(f"Sistem şu an cevap veremiyor. {last_error}")
@@ -126,32 +90,41 @@ def get_ai_response_robust(prompt_history):
 # --- 5. OYUN DEĞİŞKENLERİ ---
 if "history" not in st.session_state: st.session_state.history = []
 if "stats" not in st.session_state: st.session_state.stats = {"money": 50, "team": 50, "motivation": 50}
-if "month" not in st.session_state: st.session_state.month = 0
+if "month" not in st.session_state: st.session_state.month = 1 # Başlangıç ayı 1 olsun
 if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
+if "game_won" not in st.session_state: st.session_state.game_won = False
 
 # --- 6. SENARYO YÖNETİCİSİ ---
 def run_game_turn(user_input):
-    system_prompt = """
+    # Oyunun şu an kaçıncı ayda olduğunu yapay zekaya söylüyoruz
+    current_month = st.session_state.month
+    
+    system_prompt = f"""
     Sen 'Startup Survivor' oyunusun. ACIMASIZ bir oyun yöneticisisin.
+    
+    MEVCUT DURUM:
+    - Şu an {current_month}. Aydayız.
+    - Hedef: 12. Ayı tamamlamak.
     
     GÖREVLERİN:
     1. Hamleyi yorumla.
-    2. KRİZ senaryosu yaz.
-    3. A ve B SEÇENEKLERİNİ SUN.
+    2. Eğer 12. ay bittiyse ve batmadıysa oyunu kazandır ("game_over": true, "reason": "KAZANDIN!").
+    3. Değilse yeni bir KRİZ senaryosu yaz.
+    4. A ve B SEÇENEKLERİNİ SUN.
     
     GÖRSEL KURALLAR:
     - Şıkların başlıklarını **KALIN** yap.
-    - Şıkların arasına ve krizden sonraya BOŞ SATIR koy.
+    - Şıkların arasına BOŞ SATIR koy.
     
-    ÇIKTI FORMATI (SADECE JSON):
-    {
+    ÇIKTI FORMATI (JSON):
+    {{
         "text": "Hikaye... \n\n🔥 KRİZ: [Detay]... \n\nNe yapacaksın?\n\n**A) [Başlık]**\n[Detay...]\n\n**B) [Başlık]**\n[Detay...]",
-        "month": (ay),
-        "stats": {"money": 50, "team": 50, "motivation": 50},
+        "month": {current_month + 1},
+        "stats": {{"money": 50, "team": 50, "motivation": 50}},
         "game_over": false,
         "game_over_reason": ""
-    }
+    }}
     """
     
     chat_history = [{"role": "user", "parts": [system_prompt]}]
@@ -162,7 +135,14 @@ def run_game_turn(user_input):
 
 # --- 7. ARAYÜZ ---
 st.title("💀 Startup Survivor")
-st.caption("Final Version | JSON Locked 🟢")
+
+# --- YENİ EKLENEN KISIM: ZAMAN ÇUBUĞU ---
+if not st.session_state.game_over:
+    # 12 Aylık bir süreç var
+    progress_val = min(st.session_state.month / 12.0, 1.0)
+    st.progress(progress_val, text=f"🗓️ Süreç: {st.session_state.month}. Ay / 12 Ay (Hedef: Hayatta Kal!)")
+# ----------------------------------------
+
 st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
@@ -185,12 +165,32 @@ for msg in st.session_state.history:
         if "Sen 'Startup Survivor'" not in msg["parts"][0]:
             with st.chat_message("user"): st.write(msg["parts"][0])
 
-# Oyun Akışı
-if st.session_state.month == 0:
-    st.info("Hoş geldin! Girişim fikrin ne?")
-    startup_idea = st.chat_input("Örn: Yapay zeka destekli kedi maması...")
+# --- OYUN AKIŞI ---
+
+# 1. Başlangıç Ekranı (İlk Ay)
+if len(st.session_state.history) == 0:
+    # --- YENİ EKLENEN KISIM: AÇIKLAMA KUTUSU ---
+    with st.expander("ℹ️ Oyuna Nasıl Başlarım? (Tıkla ve Oku)", expanded=True):
+        st.markdown("""
+        **Hoş Geldin Girişimci!** 👋
+        
+        Bu simülasyonda amacın şirketinle **12 Ay boyunca** hayatta kalmaktır.
+        
+        **Kurallar Basit:**
+        1. 💰 **Nakit**, 👥 **Ekip** veya 🔥 **Motivasyon** puanlarından biri **0'a düşerse BATARSIN.**
+        2. Her ay karşına zorlu bir **KRİZ** çıkacak.
+        3. Sana sunulan **A** veya **B** seçeneklerinden birini seç (veya kendi stratejini yaz).
+        4. Seçimlerin istatistiklerini etkileyecek. Dikkatli ol!
+        
+        *Başlamak için aşağıya girişim fikrini yaz...*
+        """)
+    # ---------------------------------------------
+
+    st.info("Hayalindeki girişim ne? (Örn: Uçan taksi uygulaması, Yapay zeka avukat...)")
+    startup_idea = st.chat_input("Girişim fikrini buraya yaz...")
+    
     if startup_idea:
-        with st.spinner("Yatırımcılar fikrini analiz ediyor..."):
+        with st.spinner("Yatırımcılar fikrini değerlendiriyor..."):
             response = run_game_turn(f"Oyun başlasın. Fikrim: {startup_idea}")
             if response:
                 st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
@@ -199,26 +199,38 @@ if st.session_state.month == 0:
                 st.session_state.month = response["month"]
                 st.rerun()
 
+# 2. Oyun Devam Ediyor
 elif not st.session_state.game_over:
-    user_move = st.chat_input("Hamleni yap (A, B veya kendi stratejin)...")
-    if user_move:
-        st.session_state.history.append({"role": "user", "parts": [user_move]})
-        with st.spinner("Piyasa tepki veriyor..."):
-            response = run_game_turn(user_move)
-            if response:
-                st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
-                st.session_state.stats = response["stats"]
-                st.session_state.month = response["month"]
-                if response.get("game_over"):
-                    st.session_state.game_over = True
-                    st.session_state.game_over_reason = response.get("game_over_reason")
-                st.rerun()
-    
-    # Scroll (Kaydırma) Çözümü - Görünmez Yastık
-    st.write("<br><br><br>", unsafe_allow_html=True) 
+    # Kazanma kontrolü (12 ayı geçtiyse)
+    if st.session_state.month > 12:
+        st.balloons()
+        st.success("🎉 TEBRİKLER! 12 AY BOYUNCA HAYATTA KALDIN VE ŞİRKETİ KURTARDIN!")
+        if st.button("Yeni Girişim Kur"):
+            st.session_state.clear()
+            st.rerun()
+    else:
+        user_move = st.chat_input("Hamleni yap (A, B veya kendi stratejin)...")
+        if user_move:
+            st.session_state.history.append({"role": "user", "parts": [user_move]})
+            with st.spinner("Piyasa tepki veriyor..."):
+                response = run_game_turn(user_move)
+                if response:
+                    st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
+                    st.session_state.stats = response["stats"]
+                    st.session_state.month = response["month"]
+                    
+                    # AI "battın" dediyse oyunu bitir
+                    if response.get("game_over"):
+                        st.session_state.game_over = True
+                        st.session_state.game_over_reason = response.get("game_over_reason")
+                    st.rerun()
+        
+        # Scroll Yastığı
+        st.write("<br><br><br>", unsafe_allow_html=True) 
 
+# 3. Oyun Bitti (Kaybettin)
 else:
-    st.error(f"OYUN BİTTİ: {st.session_state.game_over_reason}")
-    if st.button("Tekrar Oyna"):
+    st.error(f"💀 OYUN BİTTİ: {st.session_state.game_over_reason}")
+    if st.button("Tekrar Dene"):
         st.session_state.clear()
         st.rerun()
