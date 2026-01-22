@@ -5,7 +5,8 @@ import random
 import time
 
 # --- 1. SAYFA AYARLARI ---
-st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="centered")
+st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="wide") 
+# Not: Layout="wide" yaptık ki yan panel ve chat rahat sığsın.
 
 # --- 2. YARDIMCI FONKSİYONLAR ---
 def safe_progress(value):
@@ -28,6 +29,7 @@ def clean_json(text):
 # --- 3. AKILLI MODEL SEÇİCİ ---
 def get_best_model(api_key):
     genai.configure(api_key=api_key)
+    # 2.0 Flash ve 1.5 Pro en stabil modeller
     priority_list = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
     try:
         for model_name in priority_list:
@@ -81,7 +83,7 @@ def get_ai_response_robust(prompt_history):
                 clean_text = clean_json(response.text)
                 return json.loads(clean_text)
             except Exception as e:
-                last_error = f"Hata ({api_key[:5]}...): {str(e)}"
+                last_error = f"Hata: {str(e)}"
                 continue
     
     st.error(f"Sistem şu an cevap veremiyor. {last_error}")
@@ -90,31 +92,29 @@ def get_ai_response_robust(prompt_history):
 # --- 5. OYUN DEĞİŞKENLERİ ---
 if "history" not in st.session_state: st.session_state.history = []
 if "stats" not in st.session_state: st.session_state.stats = {"money": 50, "team": 50, "motivation": 50}
-if "month" not in st.session_state: st.session_state.month = 1 # Başlangıç ayı 1 olsun
+if "month" not in st.session_state: st.session_state.month = 1
 if "game_over" not in st.session_state: st.session_state.game_over = False
 if "game_over_reason" not in st.session_state: st.session_state.game_over_reason = ""
-if "game_won" not in st.session_state: st.session_state.game_won = False
 
 # --- 6. SENARYO YÖNETİCİSİ ---
 def run_game_turn(user_input):
-    # Oyunun şu an kaçıncı ayda olduğunu yapay zekaya söylüyoruz
     current_month = st.session_state.month
     
     system_prompt = f"""
     Sen 'Startup Survivor' oyunusun. ACIMASIZ bir oyun yöneticisisin.
     
-    MEVCUT DURUM:
-    - Şu an {current_month}. Aydayız.
-    - Hedef: 12. Ayı tamamlamak.
+    DURUM:
+    - Ay: {current_month} / 12
+    - Hedef: Şirketi batırmadan 12 ayı tamamlamak.
     
     GÖREVLERİN:
     1. Hamleyi yorumla.
-    2. Eğer 12. ay bittiyse ve batmadıysa oyunu kazandır ("game_over": true, "reason": "KAZANDIN!").
-    3. Değilse yeni bir KRİZ senaryosu yaz.
+    2. Eğer 12. ay bittiyse ve batmadıysa KAZANDIR ("game_over": true, "reason": "BAŞARDIN!").
+    3. Değilse yeni KRİZ yaz.
     4. A ve B SEÇENEKLERİNİ SUN.
     
     GÖRSEL KURALLAR:
-    - Şıkların başlıklarını **KALIN** yap.
+    - Şık başlıklarını **KALIN** yap.
     - Şıkların arasına BOŞ SATIR koy.
     
     ÇIKTI FORMATI (JSON):
@@ -127,6 +127,7 @@ def run_game_turn(user_input):
     }}
     """
     
+    # Geçmişi kopyala ve yeni mesajı ekle (AI'ya göndermek için)
     chat_history = [{"role": "user", "parts": [system_prompt]}]
     for msg in st.session_state.history: chat_history.append(msg)
     chat_history.append({"role": "user", "parts": [user_input]})
@@ -134,84 +135,87 @@ def run_game_turn(user_input):
     return get_ai_response_robust(chat_history)
 
 # --- 7. ARAYÜZ ---
-st.title("💀 Startup Survivor")
 
-# --- YENİ EKLENEN KISIM: ZAMAN ÇUBUĞU ---
-if not st.session_state.game_over:
-    # 12 Aylık bir süreç var
-    progress_val = min(st.session_state.month / 12.0, 1.0)
-    st.progress(progress_val, text=f"🗓️ Süreç: {st.session_state.month}. Ay / 12 Ay (Hedef: Hayatta Kal!)")
-# ----------------------------------------
+# --- YENİLİK 1: SABİT YAN PANEL (SIDEBAR) ---
+# İstatistikler artık burada sabit duracak, sayfa kaydıkça kaybolmayacak.
+with st.sidebar:
+    st.title("📊 Şirket Durumu")
+    
+    # Zaman Çubuğu
+    if not st.session_state.game_over:
+        progress_val = min(st.session_state.month / 12.0, 1.0)
+        st.progress(progress_val, text=f"🗓️ Ay: {st.session_state.month} / 12")
+    
+    st.markdown("---")
+    
+    # Metrikler (Alt alta)
+    st.metric("💰 Nakit", f"%{st.session_state.stats['money']}")
+    st.progress(safe_progress(st.session_state.stats['money']))
+    
+    st.metric("👥 Ekip", f"%{st.session_state.stats['team']}")
+    st.progress(safe_progress(st.session_state.stats['team']))
+    
+    st.metric("🔥 Motivasyon", f"%{st.session_state.stats['motivation']}")
+    st.progress(safe_progress(st.session_state.stats['motivation']))
+    
+    st.markdown("---")
+    if st.button("🔄 Oyunu Sıfırla"):
+        st.session_state.clear()
+        st.rerun()
 
-st.markdown("---")
+# --- ANA EKRAN (CHAT) ---
+st.header("💀 Startup Survivor")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("💰 Nakit", f"{st.session_state.stats['money']}")
-col1.progress(safe_progress(st.session_state.stats['money']))
-col2.metric("👥 Ekip", f"%{st.session_state.stats['team']}")
-col2.progress(safe_progress(st.session_state.stats['team']))
-col3.metric("🔥 Motivasyon", f"%{st.session_state.stats['motivation']}")
-col3.progress(safe_progress(st.session_state.stats['motivation']))
-
-st.markdown("---")
-
-# Sohbet Geçmişi
+# 1. Önce Geçmiş Mesajları Yazdır
 for msg in st.session_state.history:
     if msg["role"] == "model":
         try: content = json.loads(msg["parts"][0])["text"]
         except: content = msg["parts"][0]
         with st.chat_message("ai"): st.write(content)
     else:
+        # Sistem promptlarını gizle, sadece kullanıcının yazdıklarını göster
         if "Sen 'Startup Survivor'" not in msg["parts"][0]:
             with st.chat_message("user"): st.write(msg["parts"][0])
 
-# --- OYUN AKIŞI ---
+# --- OYUN MANTIĞI VE HIZLI MESAJLAŞMA ---
 
-# 1. Başlangıç Ekranı (İlk Ay)
+# Durum 1: Oyun Yeni Başlıyor
 if len(st.session_state.history) == 0:
-    # --- YENİ EKLENEN KISIM: AÇIKLAMA KUTUSU ---
-    with st.expander("ℹ️ Oyuna Nasıl Başlarım? (Tıkla ve Oku)", expanded=True):
-        st.markdown("""
-        **Hoş Geldin Girişimci!** 👋
-        
-        Bu simülasyonda amacın şirketinle **12 Ay boyunca** hayatta kalmaktır.
-        
-        **Kurallar Basit:**
-        1. 💰 **Nakit**, 👥 **Ekip** veya 🔥 **Motivasyon** puanlarından biri **0'a düşerse BATARSIN.**
-        2. Her ay karşına zorlu bir **KRİZ** çıkacak.
-        3. Sana sunulan **A** veya **B** seçeneklerinden birini seç (veya kendi stratejini yaz).
-        4. Seçimlerin istatistiklerini etkileyecek. Dikkatli ol!
-        
-        *Başlamak için aşağıya girişim fikrini yaz...*
-        """)
-    # ---------------------------------------------
-
-    st.info("Hayalindeki girişim ne? (Örn: Uçan taksi uygulaması, Yapay zeka avukat...)")
-    startup_idea = st.chat_input("Girişim fikrini buraya yaz...")
+    st.info("👋 Hoş geldin! 12 Ay boyunca hayatta kalmaya çalış. İlk 3 ay çok kritik!")
+    startup_idea = st.chat_input("Girişim fikrin ne? (Örn: Uçan Kargo Drone'ları)")
     
     if startup_idea:
-        with st.spinner("Yatırımcılar fikrini değerlendiriyor..."):
+        # YENİLİK 2: Mesajı anında ekranda göster (Kullanıcı beklerken sıkılmasın)
+        with st.chat_message("user"):
+            st.write(startup_idea)
+        
+        # Geçmişe ekle
+        st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
+        
+        with st.spinner("Yatırımcılar fikrini inceliyor..."):
             response = run_game_turn(f"Oyun başlasın. Fikrim: {startup_idea}")
             if response:
-                st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
                 st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
                 st.session_state.stats = response["stats"]
                 st.session_state.month = response["month"]
-                st.rerun()
+                st.rerun() # Sayfayı yenile ki yeni cevap ve istatistikler güncellensin
 
-# 2. Oyun Devam Ediyor
+# Durum 2: Oyun Devam Ediyor
 elif not st.session_state.game_over:
-    # Kazanma kontrolü (12 ayı geçtiyse)
     if st.session_state.month > 12:
         st.balloons()
-        st.success("🎉 TEBRİKLER! 12 AY BOYUNCA HAYATTA KALDIN VE ŞİRKETİ KURTARDIN!")
-        if st.button("Yeni Girişim Kur"):
-            st.session_state.clear()
-            st.rerun()
+        st.success("🎉 TEBRİKLER! 12 AYI TAMAMLADIN VE ŞİRKETİ HALKA ARZ ETTİN! (EXIT)")
     else:
         user_move = st.chat_input("Hamleni yap (A, B veya kendi stratejin)...")
+        
         if user_move:
+            # YENİLİK 2: Mesajı anında ekranda göster
+            with st.chat_message("user"):
+                st.write(user_move)
+            
+            # Geçmişe ekle
             st.session_state.history.append({"role": "user", "parts": [user_move]})
+            
             with st.spinner("Piyasa tepki veriyor..."):
                 response = run_game_turn(user_move)
                 if response:
@@ -219,18 +223,17 @@ elif not st.session_state.game_over:
                     st.session_state.stats = response["stats"]
                     st.session_state.month = response["month"]
                     
-                    # AI "battın" dediyse oyunu bitir
                     if response.get("game_over"):
                         st.session_state.game_over = True
                         st.session_state.game_over_reason = response.get("game_over_reason")
                     st.rerun()
-        
-        # Scroll Yastığı
-        st.write("<br><br><br>", unsafe_allow_html=True) 
 
-# 3. Oyun Bitti (Kaybettin)
+# Durum 3: Oyun Bitti
 else:
     st.error(f"💀 OYUN BİTTİ: {st.session_state.game_over_reason}")
     if st.button("Tekrar Dene"):
         st.session_state.clear()
         st.rerun()
+
+# Scroll (Kaydırma) Çözümü - En alta boşluk bırak
+st.write("<br><br>", unsafe_allow_html=True)
