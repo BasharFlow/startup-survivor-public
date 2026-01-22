@@ -7,8 +7,7 @@ import time
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(page_title="Startup Survivor", page_icon="💀", layout="wide")
 
-# --- 2. CSS İLE GÖRSEL DÜZENLEMELER (YENİ) ---
-# Burası Sidebar'ı daraltır ve yazı tiplerini güzelleştirir.
+# --- 2. CSS İLE GÖRSEL DÜZENLEMELER ---
 st.markdown(
     """
     <style>
@@ -31,10 +30,22 @@ st.markdown(
     }
     .rules-box {
         background-color: #262730;
-        padding: 20px;
+        padding: 25px;
         border-radius: 10px;
         border: 1px solid #4F4F4F;
         margin-bottom: 20px;
+        font-size: 1.05rem;
+    }
+    .example-box {
+        background-color: #1E1E1E;
+        padding: 15px;
+        border-left: 5px solid #FF4B4B;
+        border-radius: 5px;
+        margin-top: 10px;
+        margin-bottom: 15px;
+        font-style: italic;
+        color: #E0E0E0;
+        font-size: 0.95rem;
     }
     </style>
     """,
@@ -140,10 +151,11 @@ def run_game_turn(user_input):
     - Hedef: Şirketi batırmadan 12 ayı tamamlamak.
     
     GÖREVLERİN:
-    1. Hamleyi yorumla.
-    2. 12. ay bittiyse ve batmadıysa KAZANDIR ("game_over": true, "reason": "BAŞARDIN!").
-    3. Değilse yeni KRİZ yaz.
-    4. A ve B SEÇENEKLERİNİ SUN.
+    1. Kullanıcının girdisini analiz et. (Bütçe, ekip, fikir uyumunu kontrol et).
+    2. Hamleyi yorumla.
+    3. 12. ay bittiyse KAZANDIR.
+    4. Değilse yeni KRİZ yaz.
+    5. A ve B SEÇENEKLERİNİ SUN.
     
     GÖRSEL KURALLAR:
     - Şık başlıklarını **KALIN** yap.
@@ -167,9 +179,9 @@ def run_game_turn(user_input):
 
 # --- 8. ARAYÜZ ---
 
-# --- YENİ SIDEBAR (DAHA KÜÇÜK VE KOMPAKT) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 📊 Durum") # Başlığı küçülttük
+    st.markdown("### 📊 Durum")
     
     if not st.session_state.game_over:
         st.caption(f"🗓️ Takvim: {st.session_state.month}. Ay")
@@ -177,7 +189,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Metrikleri daha kompakt göstermek için
     c1, c2 = st.columns([1, 3])
     with c1: st.write("💰")
     with c2: st.progress(safe_progress(st.session_state.stats['money']))
@@ -200,43 +211,49 @@ with st.sidebar:
 
 # --- ANA EKRAN ---
 
-# 1. Başlangıç Ekranı (Özel Tasarım)
+# 1. Başlangıç Ekranı (GÜNCELLENEN KISIM)
 if len(st.session_state.history) == 0:
     st.markdown('<div class="main-header">💀 Startup Survivor</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-text">Girişimcilik sadece parlak bir fikir değildir, kanlı bir hayatta kalma savaşıdır.</div>', unsafe_allow_html=True)
 
-    # ÖZEL BİLGİLENDİRME KUTUSU (Senin istediğin metinler)
+    # DETAYLI REHBER KUTUSU
     st.markdown(
         """
         <div class="rules-box">
             <h4>🚀 Aklındaki Girişim Piyasaya Dayanabilir mi?</h4>
-            <p>Kurmak istediğin şirketin hangi zorluklarla karşılaşacağını, yatırımcıların ne diyeceğini ve kriz anında nasıl kararlar vereceğini merak mı ediyorsun?</p>
-            <p><strong>Burası güvenli bir simülasyon. Fikrini yaz ve kaderini test et!</strong></p>
-            <hr>
-            <h5>📜 Oyunun Kuralları:</h5>
+            <p>Burası güvenli bir simülasyon. Ancak yapay zeka (Oyun Yöneticisi), senaryoyu senin verdiğin detaylara göre şekillendirir.</p>
+            <p><strong>Daha gerçekçi bir deneyim için şu detayları eklemeni öneririz:</strong></p>
             <ul>
-                <li>🗓️ <strong>Hedef:</strong> Şirketini batırmadan <strong>12 Ay</strong> boyunca yönetmek.</li>
-                <li>💀 <strong>Kaybetme Şartı:</strong> Aşağıdaki 3 değerden biri <strong>0'a düşerse</strong> oyun biter:
-                    <ul>
-                        <li>💰 <strong>Nakit:</strong> Paranız biterse iflas edersiniz.</li>
-                        <li>👥 <strong>Ekip:</strong> Çalışan kalmazsa operasyon durur.</li>
-                        <li>🔥 <strong>Motivasyon:</strong> İnancınız biterse pes edersiniz.</li>
-                    </ul>
-                </li>
+                <li>💡 <strong>İş Fikri:</strong> Ne satacaksın? (Uygulama, Kafe, Drone vb.)</li>
+                <li>💰 <strong>Bütçe:</strong> Cebinde ne kadar var? (Düşük bütçe = Daha çok kriz!)</li>
+                <li>👥 <strong>Ekip:</strong> Tek başına mısın yoksa ortakların var mı?</li>
+                <li>🎯 <strong>Hedef:</strong> Amacın ne? (Global marka olmak mı, mahallede sevilmek mi?)</li>
+            </ul>
+            <p><em>Örnek Başlangıç:</em></p>
+            <div class="example-box">
+                "Kadıköy'de 3. dalga bir kahve dükkanı açıyorum. Cebimde <strong>500.000 TL</strong> var, <strong>2 kişilik</strong> tecrübeli bir ekibiz ve hedefimiz öğrencilere uygun fiyatlı çalışma alanı sunmak."
+            </div>
+            <hr>
+            <h5>💀 Kaybetme Şartları:</h5>
+            <p>Aşağıdaki 3 değerden biri <strong>0'a düşerse</strong> oyun biter:</p>
+            <ul>
+                <li>💰 <strong>Nakit:</strong> Paranız biterse iflas edersiniz.</li>
+                <li>👥 <strong>Ekip:</strong> Çalışan kalmazsa operasyon durur.</li>
+                <li>🔥 <strong>Motivasyon:</strong> İnancınız biterse pes edersiniz.</li>
             </ul>
         </div>
         """, 
         unsafe_allow_html=True
     )
     
-    startup_idea = st.chat_input("Girişim fikrini buraya yaz ve maceraya başla...")
+    startup_idea = st.chat_input("Fikrini, bütçeni ve ekibini anlatarak başla...")
     
     if startup_idea:
         with st.chat_message("user"): st.write(startup_idea)
         st.session_state.history.append({"role": "user", "parts": [f"Girişim: {startup_idea}"]})
         
-        with st.spinner("Piyasa analiz ediliyor..."):
-            response = run_game_turn(f"Oyun başlasın. Fikrim: {startup_idea}")
+        with st.spinner("Piyasa ve Rakipler Analiz Ediliyor..."):
+            response = run_game_turn(f"Oyun başlasın. Detaylar: {startup_idea}")
             if response:
                 st.session_state.history.append({"role": "model", "parts": [json.dumps(response)]})
                 st.session_state.stats = response["stats"]
@@ -247,7 +264,6 @@ if len(st.session_state.history) == 0:
 elif not st.session_state.game_over:
     st.header("💀 Startup Survivor")
     
-    # Geçmiş Mesajlar
     for msg in st.session_state.history:
         if msg["role"] == "model":
             try: content = json.loads(msg["parts"][0])["text"]
