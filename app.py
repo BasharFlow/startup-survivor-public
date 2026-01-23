@@ -74,46 +74,43 @@ def trigger_chance_card():
         return selected_card
     return None
 
-# --- 6. AI MODEL BAĞLANTISI (GÜNCELLENDİ: 1.5 FLASH SİLİNDİ) ---
+# --- 6. AI MODEL BAĞLANTISI (GÜNCELLENDİ: GEMINI 2.5 ÖNCELİKLİ) ---
 def get_ai_response(prompt_history):
     if "GOOGLE_API_KEYS" not in st.secrets:
         st.error("HATA: Secrets dosyasında API Key bulunamadı!")
         return None
     
-    # API Keyleri karıştır ki yük dağılsın
+    # API Keyleri karıştır
     api_keys = st.secrets["GOOGLE_API_KEYS"]
     shuffled_keys = list(api_keys)
     random.shuffle(shuffled_keys)
     
-    # --- YENİ MODEL LİSTESİ (2.0 ÖNCELİKLİ) ---
+    # --- KRİTİK GÜNCELLEME: SENİN İÇİN ÇALIŞAN MODEL LİSTESİ ---
     priority_models = [
-        'gemini-2.0-flash',       # En yeni ve hızlı
-        'gemini-2.0-flash-exp',   # Deneysel sürüm (Genelde açıktır)
-        'gemini-1.5-pro',         # Stabil ve zeki
-        'gemini-1.5-pro-latest'   # Yedek
+        'gemini-2.5-flash',       # <-- EN ÖNCELİKLİ (Key Tester'da Çalışan)
+        'gemini-2.0-flash',       # Yedek
+        'gemini-2.0-flash-exp'    # Yedek
     ]
 
     selected_model = None
-    active_key = None
-
-    # Doğru modeli ve çalışan anahtarı bulma döngüsü
+    
+    # Döngü: Çalışan anahtar ve model kombinasyonunu bul
     for key in shuffled_keys:
         genai.configure(api_key=key)
         for m_name in priority_models:
             try:
                 model = genai.GenerativeModel(m_name)
                 # Ufak bir bağlantı testi
-                model.generate_content("Test", request_options={"timeout": 2})
+                model.generate_content("T", request_options={"timeout": 3})
                 selected_model = model
-                active_key = key
                 break # Model çalıştı, döngüden çık
             except:
-                continue # Bu model bu anahtarda çalışmadı, sıradakine bak
+                continue # Bu model olmadı, sıradakine bak
         
-        if selected_model: break # Çalışan ikili bulunduysa ana döngüden çık
+        if selected_model: break # Çalışan bulundu, ana döngüden çık
 
     if not selected_model:
-        st.error("Hiçbir model (Gemini 2.0/1.5 Pro) çalıştırılamadı. API Keylerinizi veya kotanızı kontrol edin.")
+        st.error("Bağlantı kurulamadı. (Gemini 2.5 Flash dahil tüm modeller denendi). Lütfen API Keylerinizi kontrol edin.")
         return None
 
     # Üretim Ayarları
